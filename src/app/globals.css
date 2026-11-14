@@ -62,7 +62,7 @@ body {
 
 .cabecera,
 .pie {
-  padding: 1rem;
+  padding: 1rem 0;
   background: var(--superficie);
 }
 
@@ -81,6 +81,7 @@ body {
 .pie p {
   max-width: 70rem;
   margin: 0 auto;
+  padding: 0 1rem;
 }
 
 .marca {
@@ -106,7 +107,6 @@ h2 {
   font-size: 1.25rem;
   margin: 0 0 0.75rem;
 }
-
 .muro {
   display: grid;
   gap: 1.5rem;
