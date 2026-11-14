@@ -1,15 +1,10 @@
 import { NextResponse } from "next/server";
 import { mensajeSchema } from "@/schemas/mensaje";
-
-type Mensaje = { id: string; nombre: string; texto: string; creadoEn: string };
-
-const mensajes: Mensaje[] = [
-  { id: "1", nombre: "Ana", texto: "¡Bienvenidos al muro!", creadoEn: new Date().toISOString() },
-  { id: "2", nombre: "Luis", texto: "Hoy toca entregar el hito 1.", creadoEn: new Date().toISOString() },
-];
+import { mensajes, type Mensaje } from "@/lib/almacen";
 
 export async function GET() {
-  return NextResponse.json({ items: mensajes, siguienteCursor: null });
+  const principales = mensajes.filter((m) => m.respuestaA === null);
+  return NextResponse.json({ items: principales, siguienteCursor: null });
 }
 
 export async function POST(request: Request) {
@@ -31,8 +26,10 @@ export async function POST(request: Request) {
 
   const nuevo: Mensaje = {
     id: crypto.randomUUID(),
+    uid: "uid-invitado",
     nombre: "Invitado",
     texto: resultado.data.texto,
+    respuestaA: null,
     creadoEn: new Date().toISOString(),
   };
   mensajes.unshift(nuevo);
