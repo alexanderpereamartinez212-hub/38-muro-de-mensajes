@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./**/*.pem)",
+      "Read(./**/*serviceAccount*.json)"
+    ],
+    "ask": [
+      "Bash(git push:*)",
+      "Bash(vercel:*)",
+      "Bash(npm install:*)",
+      "Bash(npm i:*)"
+    ]
+  }
+}
