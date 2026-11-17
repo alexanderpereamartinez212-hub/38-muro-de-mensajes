@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { MAX_CARACTERES, mensajeSchema } from "@/schemas/mensaje";
 
-type Mensaje = { id: string; nombre: string; texto: string; creadoEn: string };
+type Mensaje = { id: string; uid: string; nombre: string; texto: string; creadoEn: string };
 type Estado = "cargando" | "listo" | "error";
 
 export default function MuroDeMensajes() {
@@ -130,12 +131,13 @@ export default function MuroDeMensajes() {
             {mensajes.map((m) => (
               <li key={m.id}>
                 <p>
-                  <strong>{m.nombre}</strong>{" "}
+                  <strong><Link href={`/perfil/${m.uid}`}>{m.nombre}</Link></strong>{" "}
                   <time dateTime={m.creadoEn}>
                     {new Date(m.creadoEn).toLocaleString("es")}
                   </time>
                 </p>
                 <p>{m.texto}</p>
+                <p><Link href={`/mensajes/${m.id}`}>Ver respuestas</Link></p>
               </li>
             ))}
           </ul>

@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { mensajeSchema } from "@/schemas/mensaje";
 import { mensajes, type Mensaje } from "@/lib/almacen";
+import { permitirPublicar } from "@/lib/limitador";
 
 export async function GET() {
   const principales = mensajes.filter((m) => m.respuestaA === null);
@@ -8,6 +9,15 @@ export async function GET() {
 }
 
 export async function POST(request: Request) {
+  const uid = "uid-invitado";
+
+  if (!permitirPublicar(uid)) {
+    return NextResponse.json(
+      { error: "Demasiados mensajes. Espera un minuto e intenta de nuevo." },
+      { status: 429 },
+    );
+  }
+
   const cuerpo = await request.json().catch(() => null);
   const resultado = mensajeSchema.safeParse(cuerpo);
 
@@ -26,7 +36,7 @@ export async function POST(request: Request) {
 
   const nuevo: Mensaje = {
     id: crypto.randomUUID(),
-    uid: "uid-invitado",
+    uid,
     nombre: "Invitado",
     texto: resultado.data.texto,
     respuestaA: null,
