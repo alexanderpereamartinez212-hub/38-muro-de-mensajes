@@ -224,3 +224,24 @@ li time {
     scroll-behavior: auto !important;
   }
 }
+
+.reacciones {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0.5rem 0;
+}
+
+.reacciones button {
+  padding: 0.25rem 0.75rem;
+  color: var(--texto);
+  background: var(--fondo);
+  border: 2px solid var(--borde);
+}
+
+.reacciones button[aria-pressed="true"] {
+  background: var(--acento);
+  color: var(--acento-texto);
+  border-color: var(--acento);
+}

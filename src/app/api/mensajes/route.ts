@@ -2,16 +2,27 @@
 import { mensajeSchema } from "@/schemas/mensaje";
 import { mensajes, type Mensaje } from "@/lib/almacen";
 import { permitirPublicar } from "@/lib/limitador";
+import { reacciones } from "@/lib/reacciones";
+import { contar } from "@/services/reacciones";
+
+const UID = "uid-invitado";
 
 export async function GET() {
-  const principales = mensajes.filter((m) => m.respuestaA === null);
-  return NextResponse.json({ items: principales, siguienteCursor: null });
+  const items = mensajes
+    .filter((m) => m.respuestaA === null)
+    .map((m) => {
+      const porUsuario = reacciones.get(m.id);
+      return {
+        ...m,
+        conteo: porUsuario ? contar(porUsuario) : {},
+        reaccionPropia: porUsuario?.get(UID) ?? null,
+      };
+    });
+  return NextResponse.json({ items, siguienteCursor: null });
 }
 
 export async function POST(request: Request) {
-  const uid = "uid-invitado";
-
-  if (!permitirPublicar(uid)) {
+  if (!permitirPublicar(UID)) {
     return NextResponse.json(
       { error: "Demasiados mensajes. Espera un minuto e intenta de nuevo." },
       { status: 429 },
@@ -36,7 +47,7 @@ export async function POST(request: Request) {
 
   const nuevo: Mensaje = {
     id: crypto.randomUUID(),
-    uid,
+    uid: UID,
     nombre: "Invitado",
     texto: resultado.data.texto,
     respuestaA: null,
