@@ -1,0 +1,345 @@
+openapi: 3.1.0
+info:
+  title: API Muro de Mensajes con Moderación
+  version: 1.0.0
+  description: Contrato OpenAPI para el proyecto 38 (Next.js App Router + Firebase Auth + Firestore Admin).
+servers:
+  - url: http://localhost:3000
+    description: Servidor local de desarrollo
+
+components:
+  securitySchemes:
+    CookieSesion:
+      type: apiKey
+      in: cookie
+      name: sesion
+    BearerToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    Mensaje:
+      type: object
+      required: [id, uid, nombre, texto, respuestaA, oculto, reportes, creadoEn, conteo, reaccionPropia]
+      properties:
+        id:
+          type: string
+        uid:
+          type: string
+        nombre:
+          type: string
+        texto:
+          type: string
+          maxLength: 280
+        respuestaA:
+          type: [string, "null"]
+        oculto:
+          type: boolean
+        reportes:
+          type: integer
+        creadoEn:
+          type: string
+          format: date-time
+        conteo:
+          type: object
+          additionalProperties:
+            type: integer
+        reaccionPropia:
+          type: [string, "null"]
+          enum: ["👍", "❤️", "😂", "🎉", null]
+
+    ErrorApi:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+        detalles:
+          type: array
+          items:
+            type: object
+            properties:
+              campo:
+                type: string
+              mensaje:
+                type: string
+
+paths:
+  /api/auth/sesion:
+    post:
+      summary: Intercambia un idToken reciente de Firebase Auth por una cookie de sesión HttpOnly
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [idToken]
+              properties:
+                idToken:
+                  type: string
+      responses:
+        "204":
+          description: Sesión creada y cookie HttpOnly emitida
+        "400":
+          description: Falta idToken
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApi"
+        "401":
+          description: Token inválido o inicio de sesión no reciente
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApi"
+    delete:
+      summary: Cierra la sesión actual y revoca tokens
+      responses:
+        "204":
+          description: Sesión cerrada
+
+  /api/auth/yo:
+    get:
+      summary: Devuelve el usuario autenticado a partir de la cookie o Bearer token
+      security:
+        - CookieSesion: []
+        - BearerToken: []
+      responses:
+        "200":
+          description: Perfil y rol del usuario autenticado
+        "401":
+          description: Sin sesión activa
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApi"
+
+  /api/mensajes:
+    get:
+      summary: Lista mensajes públicos raíz paginados por cursor
+      parameters:
+        - in: query
+          name: uid
+          schema:
+            type: string
+        - in: query
+          name: limite
+          schema:
+            type: integer
+            default: 20
+        - in: query
+          name: cursor
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Lista paginada de mensajes visibles
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Mensaje"
+                  siguienteCursor:
+                    type: [string, "null"]
+    post:
+      summary: Publica un mensaje nuevo en el muro
+      security:
+        - CookieSesion: []
+        - BearerToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [texto]
+              properties:
+                texto:
+                  type: string
+                  minLength: 1
+                  maxLength: 280
+      responses:
+        "201":
+          description: Mensaje publicado
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Mensaje"
+        "400":
+          description: Texto vacío o mayor a 280 caracteres
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorApi"
+        "401":
+          description: No autenticado
+        "403":
+          description: Usuario bloqueado temporalmente o origen inválido
+        "429":
+          description: Límite de mensajes por minuto excedido
+
+  /api/mensajes/{id}:
+    get:
+      summary: Obtiene un mensaje y sus respuestas
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Detalle del mensaje y lista de respuestas
+        "404":
+          description: Mensaje no encontrado u oculto
+
+  /api/mensajes/{id}/respuestas:
+    post:
+      summary: Publica una respuesta dentro de un hilo
+      security:
+        - CookieSesion: []
+        - BearerToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [texto]
+              properties:
+                texto:
+                  type: string
+      responses:
+        "201":
+          description: Respuesta publicada
+        "400":
+          description: Validación fallida
+        "401":
+          description: No autenticado
+        "404":
+          description: Mensaje padre no encontrado
+
+  /api/mensajes/{id}/reaccion:
+    post:
+      summary: Alterna la reacción del usuario autenticado sobre un mensaje
+      security:
+        - CookieSesion: []
+        - BearerToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [emoji]
+              properties:
+                emoji:
+                  type: string
+                  enum: ["👍", "❤️", "😂", "🎉"]
+      responses:
+        "200":
+          description: Conteo actualizado de reacciones
+        "400":
+          description: Emoji no permitido
+        "401":
+          description: No autenticado
+
+  /api/mensajes/{id}/reportar:
+    post:
+      summary: Incrementa el contador de reportes de un mensaje
+      security:
+        - CookieSesion: []
+        - BearerToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Reporte registrado
+        "401":
+          description: No autenticado
+        "404":
+          description: Mensaje no encontrado
+
+  /api/perfil/{uid}:
+    get:
+      summary: Lista las publicaciones visibles de un usuario
+      parameters:
+        - in: path
+          name: uid
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Mensajes del perfil
+
+  /api/moderacion/mensajes:
+    get:
+      summary: Lista todos los mensajes (incluidos ocultos y reportes) para moderadores
+      security:
+        - CookieSesion: []
+        - BearerToken: []
+      responses:
+        "200":
+          description: Cola completa de moderación
+        "401":
+          description: No autenticado
+        "403":
+          description: Usuario sin rol de moderador
+
+  /api/moderacion/mensajes/{id}:
+    patch:
+      summary: Oculta o restaura un mensaje y permite bloquear temporalmente al autor
+      security:
+        - CookieSesion: []
+        - BearerToken: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                oculto:
+                  type: boolean
+                uidUsuario:
+                  type: string
+                minutosBloqueo:
+                  type: integer
+      responses:
+        "200":
+          description: Acción de moderación aplicada
+        "400":
+          description: Cuerpo inválido
+        "401":
+          description: No autenticado
+        "403":
+          description: Usuario sin rol de moderador

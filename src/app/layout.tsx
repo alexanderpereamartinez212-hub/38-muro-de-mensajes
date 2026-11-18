@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { Geist, Geist_Mono } from "next/font/google";
+import BarraSesion from "@/components/BarraSesion";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,11 +26,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           Saltar al contenido
         </a>
         <header className="cabecera">
-          <nav aria-label="Principal">
-            <Link className="marca" href="/">
-              Muro de mensajes
-            </Link>
-          </nav>
+          <BarraSesion />
         </header>
         <main id="contenido" className="contenido" tabIndex={-1}>
           {children}

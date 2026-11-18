@@ -1,51 +1,33 @@
-﻿import { NextResponse } from "next/server";
-import { z } from "zod";
-import { mensajes } from "@/lib/almacen";
-import { reacciones } from "@/lib/reacciones";
-import { EMOJIS, alternarReaccion, contar } from "@/services/reacciones";
-
-const esquema = z.strictObject({ emoji: z.enum(EMOJIS) });
+import { NextResponse } from "next/server";
+import { ErrorHttp, requerirUsuario } from "@/lib/auth";
+import { procesarReaccion } from "@/services/mensajes";
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> },
+  context: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
+  try {
+    const usuario = await requerirUsuario(request);
+    const { id } = await context.params;
+    const body = await request.json().catch(() => null);
 
-  if (!mensajes.some((m) => m.id === id)) {
-    return NextResponse.json({ error: "Mensaje no encontrado" }, { status: 404 });
-  }
+    const resultado = await procesarReaccion(id, usuario.uid, body?.emoji);
+    if (!resultado.ok) {
+      return NextResponse.json({ error: resultado.error }, { status: resultado.status });
+    }
 
-  const resultado = esquema.safeParse(await request.json().catch(() => null));
-  if (!resultado.success) {
     return NextResponse.json(
       {
-        error: "Datos inválidos",
-        detalles: resultado.error.issues.map((i) => ({
-          campo: i.path.join("."),
-          mensaje: i.message,
-        })),
+        reaccionPropia: resultado.reaccionPropia,
+        conteo: resultado.conteo,
       },
-      { status: 400 },
+      { status: 200 },
     );
+  } catch (error) {
+    if (error instanceof ErrorHttp) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Error en POST /api/mensajes/[id]/reaccion:", error);
+    return NextResponse.json({ error: "Error interno" }, { status: 500 });
   }
-
-  const uid = "uid-invitado";
-  let porUsuario = reacciones.get(id);
-  if (!porUsuario) {
-    porUsuario = new Map();
-    reacciones.set(id, porUsuario);
-  }
-
-  const nueva = alternarReaccion(porUsuario.get(uid), resultado.data.emoji);
-  if (nueva) {
-    porUsuario.set(uid, nueva);
-  } else {
-    porUsuario.delete(uid);
-  }
-
-  return NextResponse.json({
-    reaccionPropia: nueva ?? null,
-    conteo: contar(porUsuario),
-  });
 }

@@ -1,0 +1,21 @@
+meta {
+  name: 04 - Publicar mensaje valido (201)
+  type: http
+  seq: 4
+}
+
+post {
+  url: http://localhost:3000/api/mensajes
+  body: json
+  auth: bearer
+}
+
+auth:bearer {
+  token: {{idTokenUsuario}}
+}
+
+body:json {
+  {
+    "texto": "Hola desde Bruno!"
+  }
+}

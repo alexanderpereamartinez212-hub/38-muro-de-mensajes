@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useEffect, useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
@@ -17,12 +17,32 @@ type Mensaje = {
 };
 type Estado = "cargando" | "listo" | "error";
 
+function formatearTiempoRelativo(iso: string): string {
+  const fecha = new Date(iso);
+  if (typeof Intl === "undefined" || typeof Intl.RelativeTimeFormat === "undefined") {
+    return fecha.toLocaleString("es");
+  }
+  const diffSeg = Math.round((fecha.getTime() - Date.now()) / 1000);
+  const rtf = new Intl.RelativeTimeFormat("es", { numeric: "auto" });
+
+  if (Math.abs(diffSeg) < 60) return rtf.format(diffSeg, "second");
+  const diffMin = Math.round(diffSeg / 60);
+  if (Math.abs(diffMin) < 60) return rtf.format(diffMin, "minute");
+  const diffHor = Math.round(diffMin / 60);
+  if (Math.abs(diffHor) < 24) return rtf.format(diffHor, "hour");
+  const diffDias = Math.round(diffHor / 24);
+  return rtf.format(diffDias, "day");
+}
+
 export default function MuroDeMensajes() {
   const [mensajes, setMensajes] = useState<Mensaje[]>([]);
+  const [siguienteCursor, setSiguienteCursor] = useState<string | null>(null);
+  const [cargandoMas, setCargandoMas] = useState(false);
   const [estado, setEstado] = useState<Estado>("cargando");
   const [intento, setIntento] = useState(0);
   const [texto, setTexto] = useState("");
   const [errorForm, setErrorForm] = useState("");
+  const [avisoReporte, setAvisoReporte] = useState("");
   const [publicando, iniciar] = useTransition();
   const [visibles, agregarOptimista] = useOptimistic(
     mensajes,
@@ -31,7 +51,7 @@ export default function MuroDeMensajes() {
 
   useEffect(() => {
     let activo = true;
-    fetch("/api/mensajes")
+    fetch("/api/mensajes?limite=20")
       .then((r) => {
         if (!r.ok) throw new Error("Error al cargar");
         return r.json();
@@ -39,6 +59,7 @@ export default function MuroDeMensajes() {
       .then((datos) => {
         if (activo) {
           setMensajes(datos.items);
+          setSiguienteCursor(datos.siguienteCursor ?? null);
           setEstado("listo");
         }
       })
@@ -49,6 +70,21 @@ export default function MuroDeMensajes() {
       activo = false;
     };
   }, [intento]);
+
+  async function cargarMas() {
+    if (!siguienteCursor || cargandoMas) return;
+    setCargandoMas(true);
+    try {
+      const resp = await fetch(`/api/mensajes?limite=20&cursor=${encodeURIComponent(siguienteCursor)}`);
+      if (resp.ok) {
+        const datos = await resp.json();
+        setMensajes((prev) => [...prev, ...datos.items]);
+        setSiguienteCursor(datos.siguienteCursor ?? null);
+      }
+    } finally {
+      setCargandoMas(false);
+    }
+  }
 
   function reintentar() {
     setEstado("cargando");
@@ -74,8 +110,8 @@ export default function MuroDeMensajes() {
     iniciar(async () => {
       agregarOptimista({
         id: `temp-${Date.now()}`,
-        uid: "uid-invitado",
-        nombre: "Invitado",
+        uid: "actual",
+        nombre: "Tú",
         texto: textoValido,
         creadoEn: new Date().toISOString(),
         pendiente: true,
@@ -102,6 +138,18 @@ export default function MuroDeMensajes() {
     });
   }
 
+  async function reportar(id: string) {
+    setAvisoReporte("");
+    const resp = await fetch(`/api/mensajes/${id}/reportar`, { method: "POST" });
+    if (resp.ok) {
+      setAvisoReporte("Mensaje reportado al equipo de moderación.");
+    } else if (resp.status === 401) {
+      setAvisoReporte("Inicia sesión para reportar mensajes.");
+    } else {
+      setAvisoReporte("No se pudo enviar el reporte.");
+    }
+  }
+
   return (
     <>
       <form onSubmit={publicar} noValidate>
@@ -110,6 +158,7 @@ export default function MuroDeMensajes() {
           id="texto"
           name="texto"
           rows={3}
+          maxLength={MAX_CARACTERES + 50}
           value={texto}
           onChange={(e) => {
             setTexto(e.target.value);
@@ -132,6 +181,12 @@ export default function MuroDeMensajes() {
       <section aria-labelledby="titulo-lista">
         <h2 id="titulo-lista">Mensajes</h2>
 
+        {avisoReporte && (
+          <p role="status" aria-live="polite">
+            {avisoReporte}
+          </p>
+        )}
+
         {estado === "cargando" && <p role="status">Cargando mensajes…</p>}
 
         {estado === "error" && (
@@ -148,34 +203,47 @@ export default function MuroDeMensajes() {
         )}
 
         {estado === "listo" && visibles.length > 0 && (
-          <ul>
-            {visibles.map((m) => (
-              <li key={m.id}>
-                <p>
-                  <strong>
-                    <Link href={`/perfil/${m.uid}`}>{m.nombre}</Link>
-                  </strong>{" "}
-                  <time dateTime={m.creadoEn}>
-                    {new Date(m.creadoEn).toLocaleString("es")}
-                  </time>
-                  {m.pendiente && <em> · Publicando…</em>}
-                </p>
-                <p>{m.texto}</p>
-                {!m.pendiente && (
-                  <>
-                    <ReaccionesMensaje
-                      id={m.id}
-                      conteoInicial={m.conteo ?? {}}
-                      propiaInicial={m.reaccionPropia ?? null}
-                    />
-                    <p>
-                      <Link href={`/mensajes/${m.id}`}>Ver respuestas</Link>
-                    </p>
-                  </>
-                )}
-              </li>
-            ))}
-          </ul>
+          <>
+            <ul>
+              {visibles.map((m) => (
+                <li key={m.id}>
+                  <p>
+                    <strong>
+                      <Link href={`/perfil/${m.uid}`}>{m.nombre}</Link>
+                    </strong>{" "}
+                    <time dateTime={m.creadoEn} title={new Date(m.creadoEn).toLocaleString("es")}>
+                      {formatearTiempoRelativo(m.creadoEn)}
+                    </time>
+                    {m.pendiente && <em> · Publicando…</em>}
+                  </p>
+                  <p>{m.texto}</p>
+                  {!m.pendiente && (
+                    <>
+                      <ReaccionesMensaje
+                        id={m.id}
+                        conteoInicial={m.conteo ?? {}}
+                        propiaInicial={m.reaccionPropia ?? null}
+                      />
+                      <p style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+                        <Link href={`/mensajes/${m.id}`}>Ver respuestas</Link>
+                        <button type="button" onClick={() => reportar(m.id)}>
+                          Reportar
+                        </button>
+                      </p>
+                    </>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            {siguienteCursor && (
+              <p>
+                <button type="button" onClick={cargarMas} disabled={cargandoMas}>
+                  {cargandoMas ? "Cargando más…" : "Cargar más mensajes"}
+                </button>
+              </p>
+            )}
+          </>
         )}
       </section>
     </>

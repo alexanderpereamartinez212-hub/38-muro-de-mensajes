@@ -1,45 +1,39 @@
 import { NextResponse } from "next/server";
-import { mensajeSchema } from "@/schemas/mensaje";
-import { mensajes, type Mensaje } from "@/lib/almacen";
+import { ErrorHttp, requerirUsuario } from "@/lib/auth";
+import { publicarMensaje } from "@/services/mensajes";
 
 export async function POST(
   request: Request,
-  { params }: { params: Promise<{ id: string }> },
+  context: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
-  const original = mensajes.find((m) => m.id === id && m.respuestaA === null);
+  try {
+    const usuario = await requerirUsuario(request);
+    const { id } = await context.params;
+    const cuerpo = await request.json().catch(() => ({}));
 
-  if (!original) {
+    const resultado = await publicarMensaje({
+      texto: cuerpo?.texto,
+      uid: usuario.uid,
+      nombre: usuario.nombre,
+      respuestaA: id,
+    });
+
+    if (!resultado.ok) {
+      return NextResponse.json(
+        { error: resultado.error, detalles: resultado.detalles },
+        { status: resultado.status },
+      );
+    }
+
+    return NextResponse.json(resultado.mensaje, { status: 201 });
+  } catch (error) {
+    if (error instanceof ErrorHttp) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Error en POST /api/mensajes/[id]/respuestas:", error);
     return NextResponse.json(
-      { error: "Mensaje no encontrado" },
-      { status: 404 },
+      { error: "Error interno del servidor" },
+      { status: 500 },
     );
   }
-
-  const cuerpo = await request.json().catch(() => null);
-  const resultado = mensajeSchema.safeParse(cuerpo);
-
-  if (!resultado.success) {
-    return NextResponse.json(
-      {
-        error: "Datos inválidos",
-        detalles: resultado.error.issues.map((i) => ({
-          campo: i.path.join("."),
-          mensaje: i.message,
-        })),
-      },
-      { status: 400 },
-    );
-  }
-
-  const nueva: Mensaje = {
-    id: crypto.randomUUID(),
-    uid: "uid-invitado",
-    nombre: "Invitado",
-    texto: resultado.data.texto,
-    respuestaA: id,
-    creadoEn: new Date().toISOString(),
-  };
-  mensajes.unshift(nueva);
-  return NextResponse.json(nueva, { status: 201 });
 }

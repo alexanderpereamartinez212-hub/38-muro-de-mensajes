@@ -1,0 +1,17 @@
+meta {
+  name: 02 - Publicar sin sesion (401)
+  type: http
+  seq: 2
+}
+
+post {
+  url: http://localhost:3000/api/mensajes
+  body: json
+  auth: none
+}
+
+body:json {
+  {
+    "texto": "Intento sin iniciar sesion"
+  }
+}

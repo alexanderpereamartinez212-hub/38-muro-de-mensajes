@@ -1,58 +1,68 @@
-﻿import { NextResponse } from "next/server";
-import { mensajeSchema } from "@/schemas/mensaje";
-import { mensajes, type Mensaje } from "@/lib/almacen";
-import { permitirPublicar } from "@/lib/limitador";
-import { reacciones } from "@/lib/reacciones";
-import { contar } from "@/services/reacciones";
+import { NextResponse } from "next/server";
+import {
+  ErrorHttp,
+  obtenerUsuarioOpcional,
+  requerirUsuario,
+} from "@/lib/auth";
+import { obtenerMuroPaginado, publicarMensaje } from "@/services/mensajes";
 
-const UID = "uid-invitado";
+export async function GET(request: Request) {
+  try {
+    const usuario = await obtenerUsuarioOpcional(request);
+    const { searchParams } = new URL(request.url);
+    const filtroUid = searchParams.get("uid") ?? undefined;
+    const limite = Number(searchParams.get("limite") ?? "20");
+    const cursor = searchParams.get("cursor");
 
-export async function GET() {
-  const items = mensajes
-    .filter((m) => m.respuestaA === null)
-    .map((m) => {
-      const porUsuario = reacciones.get(m.id);
-      return {
-        ...m,
-        conteo: porUsuario ? contar(porUsuario) : {},
-        reaccionPropia: porUsuario?.get(UID) ?? null,
-      };
+    const datos = await obtenerMuroPaginado(usuario?.uid ?? "anonimo", {
+      filtroUid,
+      incluirOcultos: false,
+      soloRaiz: !filtroUid,
+      limite: Number.isFinite(limite) ? limite : 20,
+      cursor,
     });
-  return NextResponse.json({ items, siguienteCursor: null });
+
+    return NextResponse.json(datos, { status: 200 });
+  } catch (error) {
+    console.error("Error en GET /api/mensajes:", error);
+    return NextResponse.json(
+      { error: "No se pudieron cargar los mensajes" },
+      { status: 500 },
+    );
+  }
 }
 
 export async function POST(request: Request) {
-  if (!permitirPublicar(UID)) {
+  try {
+    const usuario = await requerirUsuario(request);
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object") {
+      return NextResponse.json({ error: "Cuerpo inválido" }, { status: 400 });
+    }
+
+    const resultado = await publicarMensaje({
+      texto: body.texto,
+      uid: usuario.uid,
+      nombre: usuario.nombre,
+      respuestaA: typeof body.respuestaA === "string" ? body.respuestaA : null,
+    });
+
+    if (!resultado.ok) {
+      return NextResponse.json(
+        { error: resultado.error, detalles: resultado.detalles },
+        { status: resultado.status },
+      );
+    }
+
+    return NextResponse.json(resultado.mensaje, { status: 201 });
+  } catch (error) {
+    if (error instanceof ErrorHttp) {
+      return NextResponse.json({ error: error.message }, { status: error.status });
+    }
+    console.error("Error en POST /api/mensajes:", error);
     return NextResponse.json(
-      { error: "Demasiados mensajes. Espera un minuto e intenta de nuevo." },
-      { status: 429 },
+      { error: "No se pudo publicar el mensaje" },
+      { status: 500 },
     );
   }
-
-  const cuerpo = await request.json().catch(() => null);
-  const resultado = mensajeSchema.safeParse(cuerpo);
-
-  if (!resultado.success) {
-    return NextResponse.json(
-      {
-        error: "Datos inválidos",
-        detalles: resultado.error.issues.map((i) => ({
-          campo: i.path.join("."),
-          mensaje: i.message,
-        })),
-      },
-      { status: 400 },
-    );
-  }
-
-  const nuevo: Mensaje = {
-    id: crypto.randomUUID(),
-    uid: UID,
-    nombre: "Invitado",
-    texto: resultado.data.texto,
-    respuestaA: null,
-    creadoEn: new Date().toISOString(),
-  };
-  mensajes.unshift(nuevo);
-  return NextResponse.json(nuevo, { status: 201 });
 }

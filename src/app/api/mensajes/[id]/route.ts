@@ -1,20 +1,27 @@
 import { NextResponse } from "next/server";
-import { mensajes } from "@/lib/almacen";
+import { obtenerDetalleHilo } from "@/services/mensajes";
 
 export async function GET(
   _request: Request,
-  { params }: { params: Promise<{ id: string }> },
+  context: { params: Promise<{ id: string }> },
 ) {
-  const { id } = await params;
-  const mensaje = mensajes.find((m) => m.id === id && m.respuestaA === null);
+  try {
+    const { id } = await context.params;
+    const detalle = await obtenerDetalleHilo(id, "uid-invitado", false);
 
-  if (!mensaje) {
+    if (!detalle) {
+      return NextResponse.json(
+        { error: "Mensaje no encontrado" },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json(detalle, { status: 200 });
+  } catch (error) {
+    console.error("Error en GET /api/mensajes/[id]:", error);
     return NextResponse.json(
-      { error: "Mensaje no encontrado" },
-      { status: 404 },
+      { error: "Error interno del servidor" },
+      { status: 500 },
     );
   }
-
-  const respuestas = mensajes.filter((m) => m.respuestaA === id).reverse();
-  return NextResponse.json({ mensaje, respuestas });
 }
